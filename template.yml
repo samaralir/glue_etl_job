@@ -1,0 +1,153 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  GitHubOwner:
+    Type: String
+    Description: "The GitHub user or organization owning the repository"
+  GitHubRepo:
+    Type: String
+    Description: "The name of the GitHub repository"
+  GitHubBranch:
+    Type: String
+    Default: "main"
+    Description: "The branch of the GitHub repository to use"
+  GitHubPersonalAccessToken:
+    Type: String
+    Description: "GitHub personal access token for CodePipeline to access the repository"
+    NoEcho: true
+
+Resources:
+  # S3 bucket to store build artifacts and Glue job scripts
+  ArtifactsBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: 'aws-dataengineer'  # Change to a unique bucket name
+
+  GlueS3Bucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: 'aws-dataengineer'  # Change to a unique bucket name
+
+  GlueIAMRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'glue.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: 'GlueJobS3AccessPolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 's3:ListBucket'
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${GlueS3Bucket}'
+                  - !Sub 'arn:aws:s3:::${GlueS3Bucket}/*'
+        - PolicyName: 'GlueJobCloudWatchLogsPolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: 'arn:aws:logs:*:*:*'
+
+  GlueJob:
+    Type: 'AWS::Glue::Job'
+    Properties:
+      Name: 'MyGlueJob'
+      Role: !GetAtt GlueIAMRole.Arn
+      Command:
+        Name: glueetl
+        ScriptLocation: !Sub 's3://${GlueS3Bucket}/code/redditdata.py'
+      DefaultArguments:
+        '--job-language': 'python'
+        '--scriptLocation': !Sub 's3://${GlueS3Bucket}/code/redditdata.py'
+      GlueVersion: '2.0'
+      MaxCapacity: 5.0
+      Timeout: 60
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+
+  CodePipelineServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'codepipeline.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSCodePipelineFullAccess
+        - arn:aws:iam::aws:policy/AWSCodeBuildAdminAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+
+  CodeBuildServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'codebuild.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+        - arn:aws:iam::aws:policy/AWSCodeBuildAdminAccess
+
+  CodeBuildProject:
+    Type: 'AWS::CodeBuild::Project'
+    Properties:
+      Name: 'MyCodeBuildProject'
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: 'CODEPIPELINE'
+      Environment:
+        ComputeType: 'BUILD_GENERAL1_SMALL'
+        Image: 'aws/codebuild/standard:4.0'
+        Type: 'LINUX_CONTAINER'
+      Source:
+        Type: 'CODEPIPELINE'
+
+  CodePipeline:
+    Type: 'AWS::CodePipeline::Pipeline'
+    Properties:
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      ArtifactStore:
+        Type: 'S3'
+        Location: !Ref ArtifactsBucket
+      Stages:
+        - Name: 'Source'
+          Actions:
+            - Name: 'Source'
+              ActionTypeId:
+                Category: 'Source'
+                Owner: 'ThirdParty'
+                Provider: 'GitHub'
+                Version: '1'
+              OutputArtifacts
