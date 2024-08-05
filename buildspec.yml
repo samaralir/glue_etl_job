@@ -1,0 +1,22 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.8
+  pre_build:
+    commands:
+      - echo "Pre-build phase"
+  build:
+    commands:
+      - echo "Build phase"
+  post_build:
+    commands:
+      - echo "Post-build phase"
+      # Create folders in the S3 bucket
+      - aws s3api put-object --bucket aws-dataengineer --key project2/script/
+      # Upload files to the S3 bucket
+      - aws s3 cp redditdata.py s3://aws-dataengineer/project2/script/redditdata.py
+  files:
+    - '**/*'
+  base-directory: build
