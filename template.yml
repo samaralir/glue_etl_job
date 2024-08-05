@@ -140,7 +140,7 @@ Resources:
       RoleArn: !GetAtt CodePipelineServiceRole.Arn
       ArtifactStore:
         Type: 'S3'
-        Location: !Ref ArtifactsBucket
+        Location: !Ref aws-dataengineer
       Stages:
         - Name: 'Source'
           Actions:
