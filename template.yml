@@ -17,10 +17,10 @@ Parameters:
 
 Resources:
   # S3 bucket to store build artifacts and Glue job scripts
-  ArtifactsBucket:
-    Type: 'AWS::S3::Bucket'
-    Properties:
-      BucketName: 'aws-dataengineer'  # Change to a unique bucket name
+  # AwsDataEngineer:
+  #   Type: 'AWS::S3::Bucket'
+  #   Properties:
+  #     BucketName: 'aws-dataengineer'  # Change to a unique bucket name
 
   GlueS3Bucket:
     Type: 'AWS::S3::Bucket'
